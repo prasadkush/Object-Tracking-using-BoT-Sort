@@ -17,7 +17,7 @@ class STrack(BaseTrack):
     def __init__(self, tlwh, score, cls, feat=None, feat_history=50):
 
         # wait activate
-        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self._tlwh = np.asarray(tlwh, dtype=np.float64)
         self.kalman_filter = None
         self.mean, self.covariance = None, None
         self.is_activated = False
@@ -253,7 +253,7 @@ class BoTSORT(object):
 
         self.gmc = GMC(method=args.cmc_method, verbose=[args.name, args.ablation])
 
-    def update(self, output_results, img):
+    def update(self, output_results, img, imc):
         self.frame_id += 1
         activated_starcks = []
         refind_stracks = []
@@ -287,6 +287,8 @@ class BoTSORT(object):
             scores_keep = []
             classes_keep = []
 
+        print('dets.shape[0]: ', dets.shape[0])
+
         '''Extract embeddings '''
         if self.args.with_reid:
             features_keep = self.encoder.inference(img, dets)
@@ -314,6 +316,11 @@ class BoTSORT(object):
         ''' Step 2: First association, with high score detection boxes'''
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
 
+
+
+        #for t in tracked_stracks:
+        #    cv2.rectangle(imc,(int(bbox_tlbr[j,0]), int(bbox_tlbr[j,1])), (int(bbox_tlbr[j,2]), int(bbox_tlbr[j,3])),(255,0,0),2)
+
         # Predict the current location with KF
         STrack.multi_predict(strack_pool)
 
@@ -322,8 +329,25 @@ class BoTSORT(object):
         STrack.multi_gmc(strack_pool, warp)
         STrack.multi_gmc(unconfirmed, warp)
 
+        tlbr = np.zeros((1,4))
+        for st in strack_pool:
+            tlbr[0,0:2] = np.floor(np.clip(st.mean[0:2] - st.mean[2:4]/2, a_min=0, a_max=None))
+            tlbr[0,2:4] = np.ceil(np.clip(st.mean[0:2] + st.mean[2:4]/2, a_min=None, a_max=(img.shape[0] - 1, img.shape[1]-1)))
+            cv2.rectangle(imc,(int(tlbr[0,0]), int(tlbr[0,1])), (int(tlbr[0,2]), int(tlbr[0,3])),(0,255,0), 2)
+
+        for st in unconfirmed:
+            tlbr[0,0:2] = np.floor(np.clip(st.mean[0:2] - st.mean[2:4]/2, a_min=0, a_max=None))
+            tlbr[0,2:4] = np.ceil(np.clip(st.mean[0:2] + st.mean[2:4]/2, a_min=None, a_max=(img.shape[0] - 1, img.shape[1]-1)))
+            cv2.rectangle(imc,(int(tlbr[0,0]), int(tlbr[0,1])), (int(tlbr[0,2]), int(tlbr[0,3])),(0,0,255), 2)
+
+
+        cv2.imshow('imc', imc)
+
+
         # Associate with high score detection boxes
         ious_dists = matching.iou_distance(strack_pool, detections)
+
+        #print('ious_dists: ', ious_dists)
         ious_dists_mask = (ious_dists > self.proximity_thresh)
 
         if not self.args.mot20:
@@ -348,6 +372,10 @@ class BoTSORT(object):
             dists = ious_dists
 
         matches, u_track, u_detection = matching.linear_assignment(dists, thresh=self.args.match_thresh)
+        #print('matches: ', matches)
+        #print('u_track: ', u_track)
+        #print('u_detection: ', u_detection)
+        print('len(matches): ', len(matches))
 
         for itracked, idet in matches:
             track = strack_pool[itracked]
@@ -358,6 +386,8 @@ class BoTSORT(object):
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
+        print('len(activated_starcks): ', len(activated_starcks))
+        print('len(refind_stracks): ', len(refind_stracks))
 
         ''' Step 3: Second association, with low score detection boxes'''
         if len(scores):
@@ -372,6 +402,8 @@ class BoTSORT(object):
             scores_second = []
             classes_second = []
 
+        print('dets_second.shape[0]: ', dets_second.shape[0])
+
         # association the untrack to the low score detections
         if len(dets_second) > 0:
             '''Detections'''
@@ -382,7 +414,7 @@ class BoTSORT(object):
 
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         dists = matching.iou_distance(r_tracked_stracks, detections_second)
-        matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.5)
+        matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.8)
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]
             det = detections_second[idet]
@@ -392,6 +424,11 @@ class BoTSORT(object):
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
+
+        print('after second association')
+        print('len(matches): ', len(matches))
+        print('len(activated_starcks): ', len(activated_starcks))
+        print('len(refind_stracks): ', len(refind_stracks))
 
         for it in u_track:
             track = r_tracked_stracks[it]
@@ -404,7 +441,8 @@ class BoTSORT(object):
         dists = matching.iou_distance(unconfirmed, detections)
         if not self.args.mot20:
             dists = matching.fuse_score(dists, detections)
-        matches, u_unconfirmed, u_detection = matching.linear_assignment(dists, thresh=0.7)
+        #matches, u_unconfirmed, u_detection = matching.linear_assignment(dists, thresh=0.7)
+        matches, u_unconfirmed, u_detection = matching.linear_assignment(dists, thresh=0.8)
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
             activated_starcks.append(unconfirmed[itracked])
@@ -412,6 +450,12 @@ class BoTSORT(object):
             track = unconfirmed[it]
             track.mark_removed()
             removed_stracks.append(track)
+
+
+        print('after unconfirmed tracks')
+        print('len(matches): ', len(matches))
+        print('len(activated_starcks): ', len(activated_starcks))
+        print('len(refind_stracks): ', len(refind_stracks))
 
         """ Step 4: Init new stracks"""
         for inew in u_detection:
@@ -422,14 +466,28 @@ class BoTSORT(object):
             track.activate(self.kalman_filter, self.frame_id)
             activated_starcks.append(track)
 
+        print('after new tracks: ')    
+        print('len(activated_starcks): ', len(activated_starcks))
+
         """ Step 5: Update state"""
         for track in self.lost_stracks:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
 
+
+        print('\nactivated_starcks.')
+        for track in activated_starcks:
+            print('\ntrack.is_activated: ', track.is_activated)
+        print('\nrefind_stracks.')
+        for track in refind_stracks:
+            print('\ntrack.is_activated: ', track.is_activated)
+
         """ Merge """
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
+        print('\nself.tracked_stracks')
+        for track in self.tracked_stracks:
+            print('\ntrack.is_activated: ', track.is_activated)
         self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_starcks)
         self.tracked_stracks = joint_stracks(self.tracked_stracks, refind_stracks)
         self.lost_stracks = sub_stracks(self.lost_stracks, self.tracked_stracks)
@@ -441,6 +499,9 @@ class BoTSORT(object):
         # output_stracks = [track for track in self.tracked_stracks if track.is_activated]
         output_stracks = [track for track in self.tracked_stracks]
 
+        print('len(output_stracks): ', len(output_stracks))
+        for track in self.tracked_stracks:
+            print('\ntrack.is_activated: ', track.is_activated)
 
         return output_stracks
 

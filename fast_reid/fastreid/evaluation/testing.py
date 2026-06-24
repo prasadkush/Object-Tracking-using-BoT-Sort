@@ -2,6 +2,10 @@
 import logging
 import pprint
 import sys
+import collections
+import collections.abc
+collections.Mapping = collections.abc.Mapping
+collections.MutableMapping = collections.abc.MutableMapping
 from collections import Mapping, OrderedDict
 
 import numpy as np
