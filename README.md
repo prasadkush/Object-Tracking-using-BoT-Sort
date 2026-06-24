@@ -13,7 +13,7 @@
 
 ### Object Tracking of fruits 
 
-video2.mp4
+[Watch the demo](./video2.mp4)
 
 
 ## Tracking performance
