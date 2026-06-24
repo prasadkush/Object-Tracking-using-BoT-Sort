@@ -16,20 +16,6 @@
 [Watch the demo](https://drive.google.com/file/d/1z1sPhgd9UmggBCXD4KC3Jut7bXOSv7je/view?usp=drive_link)
 
 
-## Tracking performance
-### Results on MOT17 challenge test set
-| Tracker       |  MOTA |  IDF1  |  HOTA  |
-|:--------------|:-------:|:------:|:------:|
-| BoT-SORT      |  80.6   |  79.5  |  64.6  |
-| BoT-SORT-ReID |  80.5   |  80.2  |  65.0  |
-
-### Results on MOT20 challenge test set
-| Tracker       | MOTA   | IDF1 | HOTA |
-|:--------------|:-------:|:------:|:------:|
-|BoT-SORT       | 77.7   | 76.3 | 62.6 | 
-|BoT-SORT-ReID  | 77.8   | 77.5 | 63.3 | 
-
-
 ## Installation
 
 The code was tested on Ubuntu 22.04
